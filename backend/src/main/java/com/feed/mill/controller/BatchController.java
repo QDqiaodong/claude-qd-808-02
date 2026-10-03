@@ -11,8 +11,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.feed.mill.common.ApiResponse;
 import com.feed.mill.domain.Batch;
+import com.feed.mill.domain.BatchMigration;
 import com.feed.mill.dto.BatchFeedErrorVO;
 import com.feed.mill.dto.FeedingCommand;
+import com.feed.mill.dto.MigrationCommand;
+import com.feed.mill.dto.MigrationPreviewVO;
 import com.feed.mill.service.BatchService;
 
 import jakarta.validation.Valid;
@@ -41,6 +44,35 @@ public class BatchController {
     @GetMapping("/{id}")
     public ApiResponse<Batch> detail(@PathVariable Long id) {
         return ApiResponse.success(batchService.detail(id));
+    }
+
+    /** 迁移影响预览：新旧版本明细对照、计划用量与成本变化 */
+    @GetMapping("/{id}/migration-preview")
+    public ApiResponse<MigrationPreviewVO> migrationPreview(@PathVariable Long id) {
+        return ApiResponse.success(batchService.migrationPreview(id));
+    }
+
+    /** 迁移选择：MIGRATE 迁移到新版本（重建投料明细）/ FREEZE 冻结在原版本（原子收口） */
+    @PostMapping("/{id}/migrate")
+    public ApiResponse<Batch> migrate(@PathVariable Long id, @Valid @RequestBody MigrationCommand command) {
+        Batch batch = batchService.migrate(id, command);
+        String action = command.getAction() == null ? "" : command.getAction().toUpperCase();
+        String message = "MIGRATE".equals(action)
+                ? "已迁移到新版本，投料明细与计划用量已按新版本重新生成"
+                : "已确认冻结，批次继续使用原版本快照";
+        return ApiResponse.success(message, batch);
+    }
+
+    /** 批次的迁移/冻结记录（可追溯最终采用的配方版本） */
+    @GetMapping("/{id}/migrations")
+    public ApiResponse<List<BatchMigration>> migrations(@PathVariable Long id) {
+        return ApiResponse.success(batchService.migrations(id));
+    }
+
+    /** 全部迁移/冻结记录 */
+    @GetMapping("/migrations/all")
+    public ApiResponse<List<BatchMigration>> allMigrations() {
+        return ApiResponse.success(batchService.allMigrations());
     }
 
     /** 开始称量 / 确认投料 */

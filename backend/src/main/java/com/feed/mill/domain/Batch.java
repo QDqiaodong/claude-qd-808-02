@@ -22,7 +22,9 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * 生产批次：批次号、配方、计划产量吨。
+ * 生产批次：批次号、配方版本、计划产量吨。
+ * recipe 指向具体的配方修订版本行 —— 批次最终采用哪个版本一目了然；
+ * 已开始投料/制粒/质检的批次永远钉在引用的版本快照上，只有 PLANNED 批次允许迁移。
  * 投料明细用 @SortComparator + SortedSet，严格按照投料顺序（投料口次序）排成有序集合。
  */
 @Entity
@@ -56,6 +58,10 @@ public class Batch {
     /** 状态 PLANNED/FEEDING/PELLETING/QC/RECHECK/DONE */
     @Column(name = "status", length = 16)
     private String status;
+
+    /** 配方迁移状态 NONE 无待办 / PENDING 有新修订待选择 / FROZEN 已确认冻结 / MIGRATED 已迁移 */
+    @Column(name = "migration_status", length = 16)
+    private String migrationStatus = "NONE";
 
     /** 班组/操作员 */
     @Column(name = "operator_name", length = 32)

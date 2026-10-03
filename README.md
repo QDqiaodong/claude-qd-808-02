@@ -51,21 +51,37 @@
    一批次同一时刻只有一张进行中复检单（uk_recheck_active 唯一索引），
    最终结论用条件更新原子收口，并发/重复提交只有第一个生效，后到请求看到已完成结果不能覆盖；
    结论生效后批次状态、质检卡片、概览合格率口径一致回写（放行=合格）。
+7. 配方修订版本与批次迁移：已发布配方是只读快照，改动必须「创建修订」生成 DRAFT 草稿再发布；
+   每个修订版本一行（uk_recipe_code_rev 联合唯一），同族只有一个生效版本（uk_recipe_active），
+   发布时旧版本用条件更新原子收口为 SUPERSEDED，多人同时发布只有第一个生效；
+   发布后计划中批次**默认冻结**在原版本快照并标记「待选择」（不偷改），操作员看清差异后
+   选择「迁移到新版本」（重新生成投料明细、计划用量与成本）或「确认冻结」，选择记录写 batch_migration；
+   已开始投料（含称量中）/制粒/质检的批次必须保持原版本与原明细，服务端硬校验 + 条件更新双重拦截；
+   迁移/冻结用条件更新原子收口，并发操作同一批次只有第一个生效；
+   修订差异快照写 recipe_revision_log.diff_json，批次引用哪个版本行即最终采用的配方版本，全程可追溯。
 
 ## 接口
 
 ```
 GET  /api/materials                 原料与筒仓
 GET  /api/materials/low-stock       缺料预警
-GET  /api/recipes                   配方列表
+GET  /api/recipes                   配方列表（当前生效版本 + 修订草稿）
 GET  /api/recipes/{id}              配方详情（@SortNatural 有序明细）
-POST /api/recipes/{id}/adjust       占比微调 ±0.5%
-POST /api/recipes/{id}/spread       锁定占比并自动平摊
-POST /api/recipes/{id}/submit       发布校验（合计 100%）
-GET  /api/recipes/stats/species     按畜种统计配方数与成本
+POST /api/recipes/{id}/adjust       占比微调 ±0.5%（仅草稿可改）
+POST /api/recipes/{id}/spread       锁定占比并自动平摊（仅草稿可改）
+POST /api/recipes/{id}/submit       发布校验（合计 100%；修订发布原子收口旧版本）
+POST /api/recipes/{id}/revise       创建修订草稿（基于当前生效版本）
+POST /api/recipes/{id}/discard      废弃修订草稿
+GET  /api/recipes/{id}/revisions    版本链（含被取代的历史快照）
+GET  /api/recipes/{id}/revision-logs 修订记录（含修订前后差异快照）
+GET  /api/recipes/stats/species     按畜种统计配方数与成本（只统计生效版本）
 GET  /api/batches                   批次列表
 GET  /api/batches/{id}              批次详情（@SortComparator 有序投料明细）
 POST /api/batches/{id}/feeding      开始称量 / 取消称量 / 确认投料
+GET  /api/batches/{id}/migration-preview 迁移影响预览（新旧版本差异/计划量/成本）
+POST /api/batches/{id}/migrate      迁移选择：MIGRATE 迁移新版本 / FREEZE 冻结原版本（原子收口）
+GET  /api/batches/{id}/migrations   批次迁移/冻结记录
+GET  /api/batches/migrations/all    全部迁移/冻结记录
 GET  /api/batches/stats/feed-error  按批次统计投料误差率
 GET  /api/pellets                   制粒记录（按环模磨损倒序）
 POST /api/pellets/batch/{id}/adjust 工艺参数调整 + 推荐寿命消耗

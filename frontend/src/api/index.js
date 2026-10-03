@@ -34,11 +34,22 @@ export const spreadRatio = (id, payload) => http.post(`/recipes/${id}/spread`, p
 export const submitRecipe = (id) => http.post(`/recipes/${id}/submit`)
 export const fetchSpeciesStats = () => http.get('/recipes/stats/species')
 
+/** 配方修订版本 */
+export const reviseRecipe = (id, payload) => http.post(`/recipes/${id}/revise`, payload)
+export const discardRevision = (id) => http.post(`/recipes/${id}/discard`)
+export const fetchRevisions = (id) => http.get(`/recipes/${id}/revisions`)
+export const fetchRevisionLogs = (id) => http.get(`/recipes/${id}/revision-logs`)
+
 /** 批次与投料 */
 export const fetchBatches = () => http.get('/batches')
 export const fetchBatch = (id) => http.get(`/batches/${id}`)
 export const feeding = (id, payload) => http.post(`/batches/${id}/feeding`, payload)
 export const fetchFeedErrorStats = () => http.get('/batches/stats/feed-error')
+
+/** 批次配方迁移 */
+export const fetchMigrationPreview = (id) => http.get(`/batches/${id}/migration-preview`)
+export const migrateBatch = (id, payload) => http.post(`/batches/${id}/migrate`, payload)
+export const fetchBatchMigrations = (id) => http.get(`/batches/${id}/migrations`)
 
 /** 制粒 */
 export const fetchPellets = () => http.get('/pellets')
