@@ -1,0 +1,786 @@
+/* 饲料加工厂 · 配方批次与质检管理 —— 主色深红 #b71c1c */
+:root {
+  --fm-primary: #b71c1c;
+  --fm-primary-dark: #8e1414;
+  --fm-primary-soft: #fbe9e9;
+  --fm-ink: #1c1f23;
+  --fm-muted: #6b7280;
+  --fm-bg: #f4f5f7;
+  --fm-card: #ffffff;
+  --fm-line: #e5e7eb;
+  --fm-green: #2e7d32;
+  --fm-orange: #ef6c00;
+  --fm-blue: #1565c0;
+
+  /* Element Plus 主题色跟随主色 */
+  --el-color-primary: #b71c1c;
+  --el-color-primary-light-3: #d14949;
+  --el-color-primary-light-5: #e07373;
+  --el-color-primary-light-7: #eda3a3;
+  --el-color-primary-light-8: #f3bcbc;
+  --el-color-primary-light-9: #f9dcdc;
+  --el-color-primary-dark-2: #8e1414;
+  --el-border-radius-base: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--fm-bg);
+  color: var(--fm-ink);
+  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* ============ 页面骨架 ============ */
+.mill-app {
+  min-height: 100vh;
+  padding-bottom: 48px;
+}
+
+.mill-top {
+  background: linear-gradient(120deg, #7f1212 0%, #b71c1c 55%, #d14949 100%);
+  color: #fff;
+  padding: 22px 32px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.mill-top .brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.mill-top .logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  letter-spacing: 1px;
+  font-size: 17px;
+}
+
+.mill-top h1 {
+  font-size: 20px;
+  letter-spacing: 0.5px;
+}
+
+.mill-top p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.top-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.top-meta span {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+/* ============ 锚点吸顶条 ============ */
+.anchor-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  gap: 6px;
+  padding: 10px 32px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--fm-line);
+  transition: box-shadow 0.2s, padding 0.2s;
+}
+
+.anchor-bar.stuck {
+  box-shadow: 0 6px 18px rgba(31, 35, 41, 0.12);
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.anchor-bar a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.18s;
+  border: 1px solid transparent;
+}
+
+.anchor-bar a:hover {
+  background: var(--fm-primary-soft);
+  color: var(--fm-primary-dark);
+}
+
+.anchor-bar a.active {
+  background: var(--fm-primary);
+  color: #fff;
+  border-color: var(--fm-primary);
+  box-shadow: 0 4px 12px rgba(183, 28, 28, 0.28);
+}
+
+.anchor-bar a .idx {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.anchor-bar a.active .idx {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+/* ============ 区块 ============ */
+.mill-section {
+  scroll-margin-top: 92px;
+  padding: 0 32px;
+  margin-top: 22px;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-head h2 {
+  font-size: 17px;
+  color: var(--fm-primary-dark);
+  border-left: 4px solid var(--fm-primary);
+  padding-left: 10px;
+}
+
+.section-head span {
+  font-size: 12px;
+  color: var(--fm-muted);
+}
+
+.panel {
+  background: var(--fm-card);
+  border: 1px solid var(--fm-line);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.panel + .panel {
+  margin-top: 14px;
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 1080px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .mill-section, .anchor-bar, .mill-top {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+.muted {
+  color: var(--fm-muted);
+}
+
+.mini {
+  font-size: 12px;
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============ 指标卡 ============ */
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .metric-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.metric-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--fm-line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  overflow: hidden;
+}
+
+.metric-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--fm-primary);
+}
+
+.metric-card:nth-child(2)::before {
+  background: var(--fm-orange);
+}
+
+.metric-card:nth-child(3)::before {
+  background: var(--fm-green);
+}
+
+.metric-card .label {
+  font-size: 12px;
+  color: var(--fm-muted);
+}
+
+.metric-card .value {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-card .unit {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fm-muted);
+  margin-left: 4px;
+}
+
+.metric-card .foot {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--fm-muted);
+}
+
+/* ============ 堆叠占比条 ============ */
+.stack-bar {
+  display: flex;
+  height: 46px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #d9dde3;
+  background: repeating-linear-gradient(45deg, #fafafa, #fafafa 8px, #f1f1f1 8px, #f1f1f1 16px);
+}
+
+.stack-seg {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.15s;
+  min-width: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.stack-seg:hover {
+  filter: brightness(1.08);
+}
+
+.stack-seg.selected {
+  outline: 3px solid #1c1f23;
+  outline-offset: -3px;
+  z-index: 2;
+}
+
+.stack-seg.locked::after {
+  content: "锁";
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--fm-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.legend-row.selected {
+  border-color: var(--fm-primary);
+  background: var(--fm-primary-soft);
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.legend-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.total-line {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.total-line .big {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.total-ok {
+  color: var(--fm-green);
+}
+
+.total-bad {
+  color: #d32f2f;
+}
+
+/* ============ 投料口按钮阵列 ============ */
+.port-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.port-btn {
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid var(--fm-line);
+  background: #fff;
+  padding: 14px 12px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.16s, box-shadow 0.16s, border-color 0.16s;
+  overflow: hidden;
+}
+
+.port-btn:hover:not(.disabled) {
+  border-color: var(--fm-primary);
+  box-shadow: 0 6px 16px rgba(183, 28, 28, 0.16);
+}
+
+.port-btn .seq {
+  font-size: 11px;
+  color: #fff;
+  background: var(--fm-primary);
+  border-radius: 10px;
+  padding: 1px 8px;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
+.port-btn .mname {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.port-btn .plan {
+  font-size: 12px;
+  color: var(--fm-muted);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.port-btn .tag {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* 称量中：下沉态 + 脉冲 */
+.port-btn.weighing {
+  transform: translateY(6px) scale(0.985);
+  border-color: var(--fm-orange);
+  box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.12);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+.port-btn.done {
+  border-color: #a5d6a7;
+  background: #f4fbf4;
+}
+
+.port-btn.done .seq {
+  background: var(--fm-green);
+}
+
+.port-btn.abnormal {
+  border-color: #ef9a9a;
+  background: #fff5f5;
+}
+
+.port-btn.abnormal .seq {
+  background: #c62828;
+}
+
+.port-btn.abnormal .mname {
+  color: #c62828;
+}
+
+.port-btn.disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 108, 0, 0.45); }
+  70% { box-shadow: 0 0 0 12px rgba(239, 108, 0, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 108, 0, 0); }
+}
+
+.ring {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.ring text {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--fm-orange);
+}
+
+/* ============ 制粒 ============ */
+.slider-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 96px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.slider-row .sv {
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--fm-primary-dark);
+}
+
+.life-bar {
+  position: relative;
+  height: 30px;
+  border-radius: 15px;
+  background: #eceff1;
+  overflow: hidden;
+  border: 1px solid #dfe3e8;
+}
+
+.life-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #66bb6a, #43a047);
+  transition: width 0.4s;
+}
+
+.life-fill.warn {
+  background: linear-gradient(90deg, #ffb74d, #ef6c00);
+}
+
+.life-fill.over {
+  background: linear-gradient(90deg, #ef5350, #c62828);
+}
+
+.life-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1c1f23;
+}
+
+.param-card {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px dashed var(--fm-line);
+  border-radius: 8px;
+  background: #fafafa;
+  font-size: 13px;
+}
+
+/* ============ 质检 ============ */
+.qc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .qc-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.qc-card {
+  background: #fff;
+  border: 1px solid var(--fm-line);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.item-cell-bad {
+  background: #ffebee !important;
+  color: #c62828 !important;
+  font-weight: 700;
+}
+
+.conclusion-area {
+  margin-top: 12px;
+  border-top: 1px dashed var(--fm-line);
+  padding-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.stamp-wrap {
+  width: 118px;
+  height: 118px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+/* CSS 绘制的圆形印章 */
+.stamp {
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  letter-spacing: 3px;
+  transform: rotate(-9deg);
+  border: 4px solid currentColor;
+  box-shadow: inset 0 0 0 2px currentColor, 0 2px 8px rgba(0, 0, 0, 0.08);
+  position: relative;
+  opacity: 0.92;
+  animation: stamp-in 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.stamp .stamp-title {
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.stamp .stamp-sub {
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-top: 4px;
+  opacity: 0.85;
+}
+
+.stamp .stamp-date {
+  font-size: 9px;
+  margin-top: 3px;
+  opacity: 0.75;
+  letter-spacing: 0;
+}
+
+.stamp.pass {
+  color: #2e7d32;
+  background: radial-gradient(circle, rgba(46, 125, 50, 0.07), rgba(46, 125, 50, 0.02));
+}
+
+.stamp.downgrade {
+  color: #ef6c00;
+  background: radial-gradient(circle, rgba(239, 108, 0, 0.08), rgba(239, 108, 0, 0.02));
+}
+
+.stamp.reject {
+  color: #c62828;
+  background: radial-gradient(circle, rgba(198, 40, 40, 0.09), rgba(198, 40, 40, 0.02));
+}
+
+.stamp.none {
+  color: #9e9e9e;
+  opacity: 0.6;
+  border-style: dashed;
+}
+
+@keyframes stamp-in {
+  0% { transform: rotate(-9deg) scale(1.8); opacity: 0; }
+  100% { transform: rotate(-9deg) scale(1); opacity: 0.92; }
+}
+
+.stamp-hint {
+  font-size: 12px;
+  color: var(--fm-muted);
+  margin-top: 6px;
+}
+
+.tag-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chip-pass { background: #e8f5e9; color: #2e7d32; }
+.chip-down { background: #fff3e0; color: #ef6c00; }
+.chip-reject { background: #ffebee; color: #c62828; }
+.chip-run { background: #e3f2fd; color: #1565c0; }
+.chip-gray { background: #eceff1; color: #607d8b; }
+
+/* ============ 退货复检闭环 ============ */
+.recheck-area {
+  margin-top: 12px;
+  border-top: 1px dashed var(--fm-line);
+  padding-top: 12px;
+}
+
+.recheck-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.recheck-panel {
+  border: 1px solid var(--fm-line);
+  border-radius: 8px;
+  background: #fafafa;
+  padding: 10px 12px;
+}
+
+.recheck-panel.recheck-done {
+  background: #fff;
+}
+
+.recheck-final {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 复检结论小印章（复用主印章配色） */
+.stamp.stamp-mini {
+  width: 76px;
+  height: 76px;
+  border-width: 3px;
+  flex: none;
+}
+
+.stamp.stamp-mini .stamp-title {
+  font-size: 16px;
+}
+
+.stamp.stamp-mini .stamp-sub {
+  font-size: 9px;
+  margin-top: 2px;
+}
+
+.stamp.stamp-mini .stamp-date {
+  font-size: 8px;
+  margin-top: 2px;
+}
+
+.recheck-rule {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--fm-primary-soft);
+  color: var(--fm-primary-dark);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.bad-text {
+  color: #c62828;
+  font-weight: 700;
+}
+
+.mill-foot {
+  margin: 28px 32px 0;
+  text-align: center;
+  color: var(--fm-muted);
+  font-size: 12px;
+  border-top: 1px dashed var(--fm-line);
+  padding-top: 14px;
+}
