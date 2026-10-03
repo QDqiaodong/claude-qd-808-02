@@ -45,27 +45,37 @@
 3. 投料必须按投料口顺序；实际称重与计划量偏差超过 ±2% 拦截并记为异常。
 4. 环模累计产量 + 本批产量超过寿命上限不允许继续制粒（记录 BLOCKED）。
 5. 霉菌毒素超标必须判退货，不允许人工改判合格；其它项超标不允许判合格。
-6. 退货复检闭环：仅初检结论为退货的批次可发起复检（留发起人/原因/待复核状态）；
-   复核员必须不同于初检判定人；复检值写入 qc_recheck_item，初检 qc_sample/qc_item 永不改写；
-   霉菌毒素仍超标必须继续退货，全部项目恢复标准范围才允许放行，中间情形判降级并给明确去向；
-   一批次同一时刻只有一张进行中复检单（uk_recheck_active 唯一索引），
-   最终结论用条件更新原子收口，并发/重复提交只有第一个生效，后到请求看到已完成结果不能覆盖；
-   结论生效后批次状态、质检卡片、概览合格率口径一致回写（放行=合格）。
+6. 退货复检闭环：仅初检结论为退货的批次可发起复检；复检值写复检表，初检永不改写，
+   最终结论原子收口，并发/重复提交只有第一个生效。
+7. 配方修订与批次版本：已发布配方不可原地修改，只能复制为新的 DRAFT 修订；
+   发布时旧版转 SUPERSEDED、新版成为当前版本，并保存营养指标与原料占比/成本差异。
+   修订发布后旧版本计划批次在同一事务内默认冻结旧版本快照（`DEFAULT`），投料页用醒目操作提示迁移；
+   操作员看清投料明细、计划用量、计划成本影响后可选择 KEEP（确认保留，之后不可再迁移）或 MIGRATE。
+   MIGRATE 原子重建 feeding_item、
+   计划用量和计划成本；只要批次已开始称量/投料，或已进入制粒、质检、复检/完成，
+   立即冻结版本且禁止迁移。批次行锁与 `lock_version`、配方族行锁/唯一标记共同保证
+   多人并发发布修订或迁移同一批次时只有一个结果生效，刷新后版本、批次、投料明细一致；
+   `batch_recipe_migration` 可追溯每批最终采用版本。
 
 ## 接口
 
 ```
 GET  /api/materials                 原料与筒仓
 GET  /api/materials/low-stock       缺料预警
-GET  /api/recipes                   配方列表
-GET  /api/recipes/{id}              配方详情（@SortNatural 有序明细）
-POST /api/recipes/{id}/adjust       占比微调 ±0.5%
-POST /api/recipes/{id}/spread       锁定占比并自动平摊
-POST /api/recipes/{id}/submit       发布校验（合计 100%）
-GET  /api/recipes/stats/species     按畜种统计配方数与成本
-GET  /api/batches                   批次列表
+GET  /api/recipes                   配方版本列表（同配方按版本倒序）
+GET  /api/recipes/{id}              配方版本详情（@SortNatural 有序明细）
+POST /api/recipes/{id}/revisions    基于当前发布版本创建修订草稿
+POST /api/recipes/{id}/adjust       草稿明细占比微调 ±0.5%
+POST /api/recipes/{id}/spread       草稿锁定占比并自动平摊
+POST /api/recipes/{id}/submit       发布修订（校验、切换当前版本、生成差异）
+GET  /api/recipes/{id}/versions     同配方修订版本
+GET  /api/recipes/{id}/diffs        修订前后差异
+GET  /api/recipes/stats/species     按畜种统计配方族数与成本
+GET  /api/batches                   批次列表（带可迁移版本与冻结原因）
 GET  /api/batches/{id}              批次详情（@SortComparator 有序投料明细）
 POST /api/batches/{id}/feeding      开始称量 / 取消称量 / 确认投料
+POST /api/batches/{id}/recipe-version  计划批次 KEEP/MIGRATE 版本决策
+GET  /api/batches/{id}/recipe-migrations 批次版本冻结/保留/迁移记录
 GET  /api/batches/stats/feed-error  按批次统计投料误差率
 GET  /api/pellets                   制粒记录（按环模磨损倒序）
 POST /api/pellets/batch/{id}/adjust 工艺参数调整 + 推荐寿命消耗

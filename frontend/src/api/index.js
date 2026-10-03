@@ -29,15 +29,20 @@ export const fetchLowStock = () => http.get('/materials/low-stock')
 /** 配方 */
 export const fetchRecipes = () => http.get('/recipes')
 export const fetchRecipe = (id) => http.get(`/recipes/${id}`)
+export const fetchRecipeVersions = (id) => http.get(`/recipes/${id}/versions`)
+export const createRecipeRevision = (id, payload) => http.post(`/recipes/${id}/revisions`, payload)
+export const fetchRecipeDiffs = (id) => http.get(`/recipes/${id}/diffs`)
 export const adjustRatio = (id, payload) => http.post(`/recipes/${id}/adjust`, payload)
 export const spreadRatio = (id, payload) => http.post(`/recipes/${id}/spread`, payload)
-export const submitRecipe = (id) => http.post(`/recipes/${id}/submit`)
+export const submitRecipe = (id, payload) => http.post(`/recipes/${id}/submit`, payload)
 export const fetchSpeciesStats = () => http.get('/recipes/stats/species')
 
 /** 批次与投料 */
 export const fetchBatches = () => http.get('/batches')
 export const fetchBatch = (id) => http.get(`/batches/${id}`)
 export const feeding = (id, payload) => http.post(`/batches/${id}/feeding`, payload)
+export const decideBatchRecipeVersion = (id, payload) => http.post(`/batches/${id}/recipe-version`, payload)
+export const fetchBatchRecipeMigrations = (id) => http.get(`/batches/${id}/recipe-migrations`)
 export const fetchFeedErrorStats = () => http.get('/batches/stats/feed-error')
 
 /** 制粒 */

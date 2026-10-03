@@ -8,8 +8,10 @@ DROP TABLE IF EXISTS qc_recheck;
 DROP TABLE IF EXISTS qc_item;
 DROP TABLE IF EXISTS qc_sample;
 DROP TABLE IF EXISTS pellet;
+DROP TABLE IF EXISTS batch_recipe_migration;
 DROP TABLE IF EXISTS feeding_item;
 DROP TABLE IF EXISTS batch;
+DROP TABLE IF EXISTS recipe_revision_diff;
 DROP TABLE IF EXISTS recipe_item;
 DROP TABLE IF EXISTS recipe;
 DROP TABLE IF EXISTS material;
@@ -36,20 +38,33 @@ CREATE TABLE material (
 
 -- 配方
 CREATE TABLE recipe (
-    id              BIGINT       NOT NULL AUTO_INCREMENT,
-    recipe_code     VARCHAR(32)  NOT NULL COMMENT '配方编号',
-    name            VARCHAR(64)  NOT NULL COMMENT '配方名称',
-    species         VARCHAR(16)  NOT NULL COMMENT '适用畜种 SWINE/POULTRY/AQUA/RUMINANT',
-    stage           VARCHAR(16)  NULL COMMENT '阶段 SUCKLING/GROWER/FINISHER/BROILER/LAYER',
-    crude_protein   DECIMAL(5,2) NULL COMMENT '粗蛋白 %',
-    metabolic_energy DECIMAL(6,2) NULL COMMENT '代谢能 MJ/kg',
-    lysine          DECIMAL(5,2) NULL COMMENT '赖氨酸 %',
-    status          VARCHAR(16)  NULL COMMENT 'DRAFT/RELEASED',
-    cost_per_ton    DECIMAL(10,2) NULL COMMENT '吨成本 元/吨',
+    id                BIGINT       NOT NULL AUTO_INCREMENT,
+    recipe_code       VARCHAR(32)  NOT NULL COMMENT '配方族编号（同配方跨版本相同）',
+    version_no        INT          NOT NULL DEFAULT 1 COMMENT '修订版本号，从 1 开始',
+    family_key        VARCHAR(48)  NOT NULL COMMENT '配方族唯一键 recipe_code',
+    source_recipe_id  BIGINT       NULL COMMENT '修订来源版本',
+    name              VARCHAR(64)  NOT NULL COMMENT '配方名称',
+    species           VARCHAR(16)  NOT NULL COMMENT '适用畜种 SWINE/POULTRY/AQUA/RUMINANT',
+    stage             VARCHAR(16)  NULL COMMENT '阶段 SUCKLING/GROWER/FINISHER/BROILER/LAYER',
+    crude_protein     DECIMAL(5,2) NULL COMMENT '粗蛋白 %',
+    metabolic_energy  DECIMAL(6,2) NULL COMMENT '代谢能 MJ/kg',
+    lysine            DECIMAL(5,2) NULL COMMENT '赖氨酸 %',
+    status            VARCHAR(16)  NULL COMMENT 'DRAFT/RELEASED/SUPERSEDED',
+    current_flag      TINYINT      NULL DEFAULT NULL COMMENT '当前已发布版本=1，其余=NULL',
+    active_draft_flag TINYINT      NULL DEFAULT NULL COMMENT '进行中修订=1，其余=NULL',
+    cost_per_ton      DECIMAL(10,2) NULL COMMENT '版本发布时吨成本快照 元/吨',
+    published_at      DATETIME     NULL COMMENT '发布时间',
+    published_by      VARCHAR(32)  NULL COMMENT '发布人',
+    change_summary    VARCHAR(255) NULL COMMENT '修订说明',
+    lock_version      INT          NOT NULL DEFAULT 0 COMMENT '修订发布乐观锁',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_recipe_code (recipe_code),
-    KEY idx_recipe_species (species)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='配方';
+    UNIQUE KEY uk_recipe_version (recipe_code, version_no),
+    UNIQUE KEY uk_recipe_family_current (family_key, current_flag),
+    UNIQUE KEY uk_recipe_draft_active (family_key, active_draft_flag),
+    KEY idx_recipe_species (species),
+    KEY idx_recipe_source (source_recipe_id),
+    CONSTRAINT fk_recipe_source FOREIGN KEY (source_recipe_id) REFERENCES recipe (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='配方修订版本';
 
 -- 配方明细（父配方用 @SortNatural 的 SortedSet 装载，按原料自然序）
 CREATE TABLE recipe_item (
@@ -66,6 +81,32 @@ CREATE TABLE recipe_item (
     CONSTRAINT fk_recipe_item_material FOREIGN KEY (material_id) REFERENCES material (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='配方明细';
 
+-- 配方修订差异：发布修订时生成，原料占比/成本及营养指标变化均保留
+CREATE TABLE recipe_revision_diff (
+    id                BIGINT        NOT NULL AUTO_INCREMENT,
+    recipe_id         BIGINT        NOT NULL COMMENT '新版本配方',
+    source_recipe_id  BIGINT        NOT NULL COMMENT '旧版本配方',
+    version_no        INT           NOT NULL COMMENT '新版本号',
+    material_id       BIGINT        NULL COMMENT '原料；NULL 表示配方头指标',
+    item_code         VARCHAR(32)   NOT NULL COMMENT '差异项编码',
+    item_name         VARCHAR(64)   NOT NULL COMMENT '差异项名称',
+    change_type       VARCHAR(16)   NOT NULL COMMENT 'ADDED/REMOVED/MODIFIED',
+    old_ratio_pct     DECIMAL(6,2)  NULL COMMENT '旧占比 %',
+    new_ratio_pct     DECIMAL(6,2)  NULL COMMENT '新占比 %',
+    old_cost_subtotal DECIMAL(10,2) NULL COMMENT '旧成本小计',
+    new_cost_subtotal DECIMAL(10,2) NULL COMMENT '新成本小计',
+    old_value         VARCHAR(64)   NULL COMMENT '旧指标值',
+    new_value         VARCHAR(64)   NULL COMMENT '新指标值',
+    unit              VARCHAR(16)   NULL COMMENT '单位',
+    created_at        DATETIME      NULL COMMENT '生成时间',
+    PRIMARY KEY (id),
+    KEY idx_revision_diff_recipe (recipe_id),
+    KEY idx_revision_diff_source (source_recipe_id),
+    CONSTRAINT fk_revision_diff_recipe FOREIGN KEY (recipe_id) REFERENCES recipe (id),
+    CONSTRAINT fk_revision_diff_source FOREIGN KEY (source_recipe_id) REFERENCES recipe (id),
+    CONSTRAINT fk_revision_diff_material FOREIGN KEY (material_id) REFERENCES material (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='配方修订差异';
+
 -- 生产批次
 CREATE TABLE batch (
     id           BIGINT        NOT NULL AUTO_INCREMENT,
@@ -75,6 +116,11 @@ CREATE TABLE batch (
     actual_tons  DECIMAL(10,2) NULL COMMENT '实际产量吨',
     produce_date DATE          NULL COMMENT '生产日期',
     status       VARCHAR(16)   NULL COMMENT 'PLANNED/FEEDING/PELLETING/QC/RECHECK/DONE',
+    recipe_version_locked TINYINT     NOT NULL DEFAULT 1 COMMENT '配方版本是否已冻结：默认保留/已确认保留/开工=1，迁移后=0',
+    version_freeze_reason VARCHAR(16) NULL COMMENT 'DEFAULT 默认冻结/KEEP 确认保留/STARTED 开工冻结',
+    planned_cost          DECIMAL(12,2) NULL COMMENT '按当前冻结版本计算的计划总成本 元',
+    recipe_decision_at    DATETIME     NULL COMMENT '最近一次 KEEP/MIGRATE 确认时间',
+    lock_version          INT          NOT NULL DEFAULT 0 COMMENT '批次迁移乐观锁',
     operator_name VARCHAR(32)  NULL COMMENT '班组',
     remark       VARCHAR(255)  NULL,
     PRIMARY KEY (id),
@@ -91,6 +137,7 @@ CREATE TABLE feeding_item (
     port_no       VARCHAR(16)   NULL COMMENT '投料口编号',
     material_id   BIGINT        NOT NULL COMMENT '原料',
     planned_kg    DECIMAL(12,2) NULL COMMENT '计划投料量 kg',
+    planned_cost  DECIMAL(12,2) NULL COMMENT '计划成本 元',
     actual_kg     DECIMAL(12,2) NULL COMMENT '实际投料量 kg',
     deviation_rate DECIMAL(8,4) NULL COMMENT '误差率 %',
     status        VARCHAR(16)   NULL COMMENT 'PENDING/WEIGHING/DONE/ABNORMAL',
@@ -101,6 +148,30 @@ CREATE TABLE feeding_item (
     CONSTRAINT fk_feeding_batch FOREIGN KEY (batch_id) REFERENCES batch (id),
     CONSTRAINT fk_feeding_material FOREIGN KEY (material_id) REFERENCES material (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='投料明细';
+
+-- 批次配方迁移记录：未开工批次可保留旧快照或迁移新修订；已开工批次只记录冻结结果
+CREATE TABLE batch_recipe_migration (
+    id                    BIGINT        NOT NULL AUTO_INCREMENT,
+    batch_id              BIGINT        NOT NULL COMMENT '生产批次',
+    from_recipe_id        BIGINT        NOT NULL COMMENT '决策前配方版本',
+    to_recipe_id          BIGINT        NOT NULL COMMENT '最终采用配方版本',
+    action                VARCHAR(16)   NOT NULL COMMENT 'KEEP 保留旧版本/MIGRATE 迁移新版本/FREEZE 开工自动冻结',
+    operator_name         VARCHAR(32)   NOT NULL COMMENT '操作人',
+    reason                VARCHAR(255)  NULL COMMENT '确认说明',
+    old_cost_per_ton      DECIMAL(10,2) NULL COMMENT '旧版本吨成本',
+    new_cost_per_ton      DECIMAL(10,2) NULL COMMENT '新版本吨成本',
+    old_planned_cost      DECIMAL(12,2) NULL COMMENT '旧计划总成本',
+    new_planned_cost      DECIMAL(12,2) NULL COMMENT '新计划总成本',
+    regenerated_item_count INT          NULL COMMENT '重新生成投料明细数',
+    created_at            DATETIME      NULL COMMENT '操作时间',
+    PRIMARY KEY (id),
+    KEY idx_batch_migration_batch (batch_id),
+    KEY idx_batch_migration_from (from_recipe_id),
+    KEY idx_batch_migration_to (to_recipe_id),
+    CONSTRAINT fk_batch_migration_batch FOREIGN KEY (batch_id) REFERENCES batch (id),
+    CONSTRAINT fk_batch_migration_from FOREIGN KEY (from_recipe_id) REFERENCES recipe (id),
+    CONSTRAINT fk_batch_migration_to FOREIGN KEY (to_recipe_id) REFERENCES recipe (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='批次配方版本迁移记录';
 
 -- 制粒工段
 CREATE TABLE pellet (
@@ -212,16 +283,17 @@ INSERT INTO material (id, material_code, name, silo_code, silo_name, category, s
 (10, 'M10', '豆油', 'SILO-10', '油脂仓', '能量饲料', 51.40, 0.30, 7600.00, '中储粮油脂', 25.00, 'IN-260905A', 5.00),
 (11, 'M11', '小麦', 'SILO-11', '小麦仓', '能量饲料', 58.70, 12.90, 2760.00, '河北柏乡粮库', 80.00, 'IN-260825A', 60.00);
 
--- 配方（8 行）
-INSERT INTO recipe (id, recipe_code, name, species, stage, crude_protein, metabolic_energy, lysine, status, cost_per_ton) VALUES
-(1, 'F-1001', '乳猪教槽料', 'SWINE', 'SUCKLING', 21.50, 14.20, 1.35, 'RELEASED', 3931.34),
-(2, 'F-1002', '中猪浓缩料', 'SWINE', 'GROWER', 17.80, 13.60, 1.05, 'RELEASED', 3381.45),
-(3, 'F-1003', '育肥猪配合料', 'SWINE', 'FINISHER', 15.60, 13.20, 0.85, 'RELEASED', 3033.60),
-(4, 'F-2001', '肉鸡前期料', 'POULTRY', 'BROILER', 21.00, 12.90, 1.15, 'RELEASED', 3903.81),
-(5, 'F-2002', '蛋鸡产蛋料', 'POULTRY', 'LAYER', 16.50, 11.80, 0.78, 'RELEASED', 3124.65),
-(6, 'F-3001', '草鱼膨化料', 'AQUA', 'FINGERLING', 30.00, 12.50, 1.60, 'RELEASED', 4005.60),
-(7, 'F-3002', '对虾配合料', 'AQUA', 'SHRIMP', 38.00, 13.00, 1.95, 'RELEASED', 4005.40),
-(8, 'F-4001', '奶牛泌乳料', 'RUMINANT', 'LACTATING', 18.20, 11.20, 0.68, 'RELEASED', 2961.65);
+-- 配方（8 个配方族；配方 4 额外演示已发布 V2 修订）
+INSERT INTO recipe (id, recipe_code, version_no, family_key, source_recipe_id, name, species, stage, crude_protein, metabolic_energy, lysine, status, current_flag, active_draft_flag, cost_per_ton, published_at, published_by, change_summary, lock_version) VALUES
+(1, 'F-1001', 1, 'F-1001', NULL, '乳猪教槽料', 'SWINE', 'SUCKLING', 21.50, 14.20, 1.35, 'RELEASED', 1, NULL, 3931.34, DATE_SUB(NOW(), INTERVAL 30 DAY), '工艺员', '初始发布', 0),
+(2, 'F-1002', 1, 'F-1002', NULL, '中猪浓缩料', 'SWINE', 'GROWER', 17.80, 13.60, 1.05, 'RELEASED', 1, NULL, 3381.45, DATE_SUB(NOW(), INTERVAL 30 DAY), '工艺员', '初始发布', 0),
+(3, 'F-1003', 1, 'F-1003', NULL, '育肥猪配合料', 'SWINE', 'FINISHER', 15.60, 13.20, 0.85, 'RELEASED', 1, NULL, 3033.60, DATE_SUB(NOW(), INTERVAL 30 DAY), '工艺员', '初始发布', 0),
+(4, 'F-2001', 1, 'F-2001', NULL, '肉鸡前期料', 'POULTRY', 'BROILER', 21.00, 12.90, 1.15, 'SUPERSEDED', NULL, NULL, 3903.81, DATE_SUB(NOW(), INTERVAL 20 DAY), '工艺员', '初始发布', 0),
+(5, 'F-2002', 1, 'F-2002', NULL, '蛋鸡产蛋料', 'POULTRY', 'LAYER', 16.50, 11.80, 0.78, 'RELEASED', 1, NULL, 3124.65, DATE_SUB(NOW(), INTERVAL 30 DAY), '工艺员', '初始发布', 0),
+(6, 'F-3001', 1, 'F-3001', NULL, '草鱼膨化料', 'AQUA', 'FINGERLING', 30.00, 12.50, 1.60, 'RELEASED', 1, NULL, 4005.60, DATE_SUB(NOW(), INTERVAL 30 DAY), '工艺员', '初始发布', 0),
+(7, 'F-3002', 1, 'F-3002', NULL, '对虾配合料', 'AQUA', 'SHRIMP', 38.00, 13.00, 1.95, 'RELEASED', 1, NULL, 4005.40, DATE_SUB(NOW(), INTERVAL 30 DAY), '工艺员', '初始发布', 0),
+(8, 'F-4001', 1, 'F-4001', NULL, '奶牛泌乳料', 'RUMINANT', 'LACTATING', 18.20, 11.20, 0.68, 'RELEASED', 1, NULL, 2961.65, DATE_SUB(NOW(), INTERVAL 30 DAY), '工艺员', '初始发布', 0),
+(9, 'F-2001', 2, 'F-2001', 4, '肉鸡前期料', 'POULTRY', 'BROILER', 20.80, 13.05, 1.18, 'RELEASED', 1, NULL, 3850.25, DATE_SUB(NOW(), INTERVAL 2 HOUR), '工艺员', '提高豆油与去皮豆粕比例，降低鱼粉用量', 0);
 
 -- 配方明细（按原料自然序，合计 100%）
 INSERT INTO recipe_item (id, recipe_id, material_id, ratio_pct, cost_subtotal, locked, sort_hint) VALUES
@@ -254,6 +326,12 @@ INSERT INTO recipe_item (id, recipe_id, material_id, ratio_pct, cost_subtotal, l
 (27, 4, 8, 1.30, 8.06, 0, 8),
 (28, 4, 9, 1.70, 50.15, 0, 9),
 (29, 4, 10, 3.50, 266.00, 0, 10),
+(80, 9, 1, 55.00, 1474.00, 0, 1),
+(81, 9, 4, 31.00, 1162.50, 0, 4),
+(82, 9, 6, 3.00, 294.00, 1, 6),
+(83, 9, 7, 4.00, 504.00, 0, 7),
+(84, 9, 9, 2.50, 73.75, 0, 9),
+(85, 9, 10, 4.50, 342.00, 0, 10),
 (30, 5, 1, 59.00, 1581.20, 0, 1),
 (31, 5, 3, 22.00, 765.60, 0, 3),
 (32, 5, 5, 10.00, 198.00, 0, 5),
@@ -284,19 +362,32 @@ INSERT INTO recipe_item (id, recipe_id, material_id, ratio_pct, cost_subtotal, l
 (57, 8, 9, 1.50, 44.25, 0, 9),
 (58, 8, 10, 1.00, 76.00, 0, 10);
 
+-- F-2001 V1 → V2 修订差异
+INSERT INTO recipe_revision_diff
+(id, recipe_id, source_recipe_id, version_no, material_id, item_code, item_name, change_type, old_ratio_pct, new_ratio_pct, old_cost_subtotal, new_cost_subtotal, old_value, new_value, unit, created_at) VALUES
+(1, 9, 4, 2, NULL, 'CRUDE_PROTEIN', '粗蛋白', 'MODIFIED', NULL, NULL, NULL, NULL, '21.50', '20.80', '%', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+(2, 9, 4, 2, NULL, 'METABOLIC_ENERGY', '代谢能', 'MODIFIED', NULL, NULL, NULL, NULL, '12.90', '13.05', 'MJ/kg', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+(3, 9, 4, 2, NULL, 'LYSINE', '赖氨酸', 'MODIFIED', NULL, NULL, NULL, NULL, '1.15', '1.18', '%', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+(4, 9, 4, 2, 1, 'M01', '玉米', 'MODIFIED', 54.50, 55.00, 1460.60, 1474.00, NULL, NULL, NULL, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+(5, 9, 4, 2, 4, 'M04', '去皮豆粕', 'MODIFIED', 30.00, 31.00, 1125.00, 1162.50, NULL, NULL, NULL, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+(6, 9, 4, 2, 6, 'M06', '鱼粉', 'MODIFIED', 5.00, 3.00, 490.00, 294.00, NULL, NULL, NULL, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+(7, 9, 4, 2, 8, 'M08', '石粉', 'REMOVED', 1.30, NULL, 8.06, NULL, NULL, NULL, NULL, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+(8, 9, 4, 2, 9, 'M09', '磷酸氢钙', 'MODIFIED', 1.70, 2.50, 50.15, 73.75, NULL, NULL, NULL, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+(9, 9, 4, 2, 10, 'M10', '豆油', 'MODIFIED', 3.50, 4.50, 266.00, 342.00, NULL, NULL, NULL, DATE_SUB(NOW(), INTERVAL 2 HOUR));
+
 -- 生产批次（11 行，日期按 CURDATE() 相对生成）
-INSERT INTO batch (id, batch_no, recipe_id, planned_tons, actual_tons, produce_date, status, operator_name, remark) VALUES
-(1, 'FM-001', 3, 24.00, 23.60, DATE_SUB(CURDATE(), INTERVAL 6 DAY), 'DONE', '甲班', '育肥料常规订单'),
-(2, 'FM-002', 1, 12.00, 11.80, DATE_SUB(CURDATE(), INTERVAL 6 DAY), 'DONE', '甲班', '乳猪料小批量'),
-(3, 'FM-003', 4, 20.00, 19.90, DATE_SUB(CURDATE(), INTERVAL 5 DAY), 'DONE', '乙班', '肉鸡料'),
-(4, 'FM-004', 2, 18.00, 17.60, DATE_SUB(CURDATE(), INTERVAL 4 DAY), 'DONE', '乙班', '中猪料'),
-(5, 'FM-005', 5, 22.00, 21.70, DATE_SUB(CURDATE(), INTERVAL 3 DAY), 'DONE', '丙班', '蛋鸡料'),
-(6, 'FM-006', 6, 15.00, 14.80, DATE_SUB(CURDATE(), INTERVAL 2 DAY), 'DONE', '丙班', '草鱼膨化料'),
-(7, 'FM-007', 7, 10.00, 9.60, DATE_SUB(CURDATE(), INTERVAL 2 DAY), 'DONE', '甲班', '对虾料'),
-(8, 'FM-008', 8, 26.00, 25.40, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'DONE', '乙班', '奶牛料'),
-(9, 'FM-009', 3, 28.00, 27.80, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'QC', '丙班', '育肥料待质检放行'),
-(10, 'FM-010', 1, 14.00, NULL, DATE_SUB(CURDATE(), INTERVAL 0 DAY), 'FEEDING', '甲班', '乳猪料在产'),
-(11, 'FM-011', 4, 16.00, NULL, DATE_SUB(CURDATE(), INTERVAL 0 DAY), 'PLANNED', '乙班', '待排产');
+INSERT INTO batch (id, batch_no, recipe_id, planned_tons, actual_tons, produce_date, status, recipe_version_locked, version_freeze_reason, planned_cost, recipe_decision_at, lock_version, operator_name, remark) VALUES
+(1, 'FM-001', 3, 24.00, 23.60, DATE_SUB(CURDATE(), INTERVAL 6 DAY), 'DONE', 1, 'STARTED', 72806.40, NULL, 0, '甲班', '育肥料常规订单'),
+(2, 'FM-002', 1, 12.00, 11.80, DATE_SUB(CURDATE(), INTERVAL 6 DAY), 'DONE', 1, 'STARTED', 47176.08, NULL, 0, '甲班', '乳猪料小批量'),
+(3, 'FM-003', 4, 20.00, 19.90, DATE_SUB(CURDATE(), INTERVAL 5 DAY), 'DONE', 1, 'STARTED', 78076.20, DATE_SUB(NOW(), INTERVAL 2 HOUR), 0, '乙班', '肉鸡料'),
+(4, 'FM-004', 2, 18.00, 17.60, DATE_SUB(CURDATE(), INTERVAL 4 DAY), 'DONE', 1, 'STARTED', 60866.10, NULL, 0, '乙班', '中猪料'),
+(5, 'FM-005', 5, 22.00, 21.70, DATE_SUB(CURDATE(), INTERVAL 3 DAY), 'DONE', 1, 'STARTED', 68742.30, NULL, 0, '丙班', '蛋鸡料'),
+(6, 'FM-006', 6, 15.00, 14.80, DATE_SUB(CURDATE(), INTERVAL 2 DAY), 'DONE', 1, 'STARTED', 60084.00, NULL, 0, '丙班', '草鱼膨化料'),
+(7, 'FM-007', 7, 10.00, 9.60, DATE_SUB(CURDATE(), INTERVAL 2 DAY), 'DONE', 1, 'STARTED', 40054.00, NULL, 0, '甲班', '对虾料'),
+(8, 'FM-008', 8, 26.00, 25.40, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'DONE', 1, 'STARTED', 77002.90, NULL, 0, '乙班', '奶牛料'),
+(9, 'FM-009', 3, 28.00, 27.80, DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'QC', 1, 'STARTED', 84940.80, NULL, 0, '丙班', '育肥料待质检放行'),
+(10, 'FM-010', 1, 14.00, NULL, DATE_SUB(CURDATE(), INTERVAL 0 DAY), 'FEEDING', 1, 'STARTED', 55038.76, NULL, 0, '甲班', '乳猪料在产'),
+(11, 'FM-011', 4, 16.00, NULL, DATE_SUB(CURDATE(), INTERVAL 0 DAY), 'PLANNED', 1, 'DEFAULT', 62460.96, DATE_SUB(NOW(), INTERVAL 2 HOUR), 0, '乙班', '待排产，默认保留 V1 快照，可评估迁移 V2');
 
 -- 投料明细（按投料口顺序，计划量 = 计划产量 × 占比）
 INSERT INTO feeding_item (id, batch_id, feed_seq, port_no, material_id, planned_kg, actual_kg, deviation_rate, status, abnormal_note, weighed_at) VALUES
@@ -379,6 +470,16 @@ INSERT INTO feeding_item (id, batch_id, feed_seq, port_no, material_id, planned_
 (77, 11, 5, 'P5', 8, 208.00, NULL, NULL, 'PENDING', NULL, NULL),
 (78, 11, 6, 'P6', 9, 272.00, NULL, NULL, 'PENDING', NULL, NULL),
 (79, 11, 7, 'P7', 10, 560.00, NULL, NULL, 'PENDING', NULL, NULL);
+
+UPDATE feeding_item f
+JOIN material m ON m.id = f.material_id
+SET f.planned_cost = ROUND(f.planned_kg * m.unit_price / 1000, 2);
+
+-- F-2001 V2 发布时的批次版本决策：已开工批次强制冻结；未开工批次默认保留原快照，等待操作员主动迁移
+INSERT INTO batch_recipe_migration
+(id, batch_id, from_recipe_id, to_recipe_id, action, operator_name, reason, old_cost_per_ton, new_cost_per_ton, old_planned_cost, new_planned_cost, regenerated_item_count, created_at) VALUES
+(1, 3, 4, 4, 'FREEZE', '系统', '批次已完成投料/制粒/质检，配方版本与投料明细强制保持 V1', 3903.81, 3903.81, 78076.20, 78076.20, NULL, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+(2, 11, 4, 4, 'FREEZE', '系统默认', '新修订 V2 发布，批次默认继续使用旧版本快照；操作员可主动迁移', 3903.81, 3850.25, 62460.96, 61604.00, NULL, DATE_SUB(NOW(), INTERVAL 2 HOUR));
 
 -- 制粒工段（每批次一条）
 INSERT INTO pellet (id, batch_id, die_code, tempering_temp, steam_pressure, die_aperture, die_used_tons, die_life_tons, hardness, powder_rate, output_tons, status) VALUES

@@ -53,6 +53,10 @@ public class FeedingItem {
     @Column(name = "planned_kg")
     private BigDecimal plannedKg;
 
+    /** 计划成本：计划投料量 × 发布版本原料单价 */
+    @Column(name = "planned_cost")
+    private BigDecimal plannedCost;
+
     /** 实际投料量 kg */
     @Column(name = "actual_kg")
     private BigDecimal actualKg;

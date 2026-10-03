@@ -31,24 +31,31 @@ public class BatchService {
     private final BatchRepository batchRepository;
     private final FeedingItemRepository feedingItemRepository;
     private final MaterialService materialService;
+    private final BatchMigrationService migrationService;
 
     public BatchService(BatchRepository batchRepository,
                         FeedingItemRepository feedingItemRepository,
-                        MaterialService materialService) {
+                        MaterialService materialService,
+                        BatchMigrationService migrationService) {
         this.batchRepository = batchRepository;
         this.feedingItemRepository = feedingItemRepository;
         this.materialService = materialService;
+        this.migrationService = migrationService;
     }
 
     @Transactional(readOnly = true)
     public List<Batch> list() {
-        return batchRepository.findAllOrdered();
+        List<Batch> batches = batchRepository.findAllOrdered();
+        batches.forEach(migrationService::enrich);
+        return batches;
     }
 
     @Transactional(readOnly = true)
     public Batch detail(Long id) {
-        return batchRepository.findById(id)
+        Batch batch = batchRepository.findDetailById(id)
                 .orElseThrow(() -> new BizException("生产批次不存在：id=" + id));
+        migrationService.enrich(batch);
+        return batch;
     }
 
     /**
@@ -56,7 +63,10 @@ public class BatchService {
      */
     @Transactional
     public Batch feed(Long batchId, FeedingCommand command) {
-        Batch batch = detail(batchId);
+        batchRepository.lockDetailForUpdate(batchId)
+                .orElseThrow(() -> new BizException("生产批次不存在：id=" + batchId));
+        Batch batch = batchRepository.findDetailById(batchId)
+                .orElseThrow(() -> new BizException("生产批次不存在：id=" + batchId));
         FeedingItem item = batch.getFeedings().stream()
                 .filter(f -> f.getFeedSeq().equals(command.getFeedSeq()))
                 .findFirst()
@@ -65,7 +75,11 @@ public class BatchService {
 
         String action = command.getAction() == null ? "WEIGH" : command.getAction().toUpperCase();
         if ("WEIGH".equals(action)) {
+            migrationService.freezeForFeeding(batch, batch.getOperatorName());
             item.setStatus("WEIGHING");
+            if ("PLANNED".equals(batch.getStatus())) {
+                batch.setStatus("FEEDING");
+            }
             batchRepository.save(batch);
             return batch;
         }
@@ -84,6 +98,7 @@ public class BatchService {
         if ("DONE".equals(item.getStatus())) {
             throw new BizException(item.getPortNo() + " 投料口已完成投料，请勿重复投料");
         }
+        migrationService.freezeForFeeding(batch, batch.getOperatorName());
         checkPrevious(batch, item);
 
         BigDecimal actual = command.getActualKg();
@@ -118,7 +133,8 @@ public class BatchService {
         boolean allDone = batch.getFeedings().stream().allMatch(f -> "DONE".equals(f.getStatus()));
         if (allDone) {
             batch.setStatus("PELLETING");
-        } else {
+        } else if (!"PELLETING".equals(batch.getStatus()) && !"QC".equals(batch.getStatus())
+                && !"RECHECK".equals(batch.getStatus()) && !"DONE".equals(batch.getStatus())) {
             batch.setStatus("FEEDING");
         }
         return batchRepository.save(batch);

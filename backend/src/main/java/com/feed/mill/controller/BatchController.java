@@ -11,8 +11,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.feed.mill.common.ApiResponse;
 import com.feed.mill.domain.Batch;
+import com.feed.mill.domain.BatchRecipeMigration;
 import com.feed.mill.dto.BatchFeedErrorVO;
+import com.feed.mill.dto.BatchRecipeMigrationCommand;
 import com.feed.mill.dto.FeedingCommand;
+import com.feed.mill.service.BatchMigrationService;
 import com.feed.mill.service.BatchService;
 
 import jakarta.validation.Valid;
@@ -26,9 +29,11 @@ import jakarta.validation.Valid;
 public class BatchController {
 
     private final BatchService batchService;
+    private final BatchMigrationService migrationService;
 
-    public BatchController(BatchService batchService) {
+    public BatchController(BatchService batchService, BatchMigrationService migrationService) {
         this.batchService = batchService;
+        this.migrationService = migrationService;
     }
 
     /** 批次列表 */
@@ -53,6 +58,24 @@ public class BatchController {
             case "CANCEL" -> "称量已取消";
             default -> "已进入称量状态";
         };
+        return ApiResponse.success(message, batch);
+    }
+
+    /** 查询批次版本决策/迁移记录 */
+    @GetMapping("/{id}/recipe-migrations")
+    public ApiResponse<List<BatchRecipeMigration>> migrations(@PathVariable Long id) {
+        return ApiResponse.success(migrationService.migrations(id));
+    }
+
+    /** 未开工批次选择继续旧版本快照或迁移到新发布修订 */
+    @PostMapping("/{id}/recipe-version")
+    public ApiResponse<Batch> decideRecipeVersion(@PathVariable Long id,
+                                                  @Valid @RequestBody BatchRecipeMigrationCommand command) {
+        Batch batch = migrationService.decide(id, command);
+        String action = command.getAction().trim().toUpperCase();
+        String message = "MIGRATE".equals(action)
+                ? "已迁移到新配方版本，并重新生成投料明细、计划用量和计划成本"
+                : "已确认继续使用原配方版本快照";
         return ApiResponse.success(message, batch);
     }
 

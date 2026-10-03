@@ -6,6 +6,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -43,11 +44,21 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 唯一约束冲突：400（避免在页面上抛出非人话的外键报错）
+     * 乐观锁冲突：409，提示刷新查看唯一生效结果
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(ObjectOptimisticLockingFailureException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail("数据已被其他操作员先提交，请刷新后查看最终版本、批次和投料明细"));
+    }
+
+    /**
+     * 唯一约束冲突：409（修订/批次并发收口后，提示刷新查看唯一生效结果）
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleIntegrity(DataIntegrityViolationException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.fail("存在唯一性约束冲突，请检查编号、手机号是否重复"));
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail("已有其他操作员先完成发布或迁移，请刷新后查看最终版本、批次和投料明细"));
     }
 
     /**

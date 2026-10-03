@@ -11,7 +11,7 @@
           <div>
             <b style="font-size:15px">{{ s.sampleNo }}</b>
             <div class="mini muted">
-              批次 {{ s.batch.batchNo }} · {{ s.batch.recipe.name }} · {{ s.sampler }} ·
+              批次 {{ s.batch.batchNo }} · {{ s.batch.recipe.recipeCode }} V{{ s.batch.recipe.versionNo }} · {{ s.batch.recipe.name }} · {{ s.sampler }} ·
               {{ String(s.sampleTime || '').replace('T', ' ').slice(0, 16) }}
             </div>
           </div>
